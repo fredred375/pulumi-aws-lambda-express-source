@@ -1,0 +1,18 @@
+plugins:
+  '@release-it/conventional-changelog':
+    preset: angular
+    infile: CHANGELOG.md
+hooks:
+  after:git:release: ./node_modules/@thingspro-cloud/devops/scripts/release/create-artifacts src; ./node_modules/@thingspro-cloud/devops/scripts/release/bump-version staging ${version}; ./node_modules/@thingspro-cloud/devops/scripts/package/src-artifacts
+git:
+  requireCleanWorkingDir: false
+  tagName: v${version}
+  commitMessage: 'chore(release): v${version} [CI SKIP]'
+  tagAnnotation: Release v${version}
+gitlab:
+  release: true
+  releaseName: Release v${version}
+  assets:
+  - ./artifacts/src/*.tgz
+npm:
+  publish: false

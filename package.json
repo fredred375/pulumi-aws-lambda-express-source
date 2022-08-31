@@ -1,0 +1,15 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@gitlab.com:moxa/ibg/software/platform/cloud/public/examples/nodejs-express-webapp-example/nodejs-express-webapp-example.git",
+  "author": "FrederickHW Chu <frederickhw.chu@moxa.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@release-it/conventional-changelog": "^5.0.0",
+    "release-it": "^15.2.0"
+  },
+  "devDependencies": {
+    "@thingspro-cloud/devops": "^0.4.60"
+  }
+}

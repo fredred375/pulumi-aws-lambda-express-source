@@ -1,0 +1,90 @@
+include:
+  - local: build/ci/gitlab-ci/rules/all-pipeline-source.yaml
+  - local: build/ci/gitlab-ci/rules/deploy.yaml
+  - local: build/ci/gitlab-ci/rules/merge-request.yaml
+  - local: build/ci/gitlab-ci/rules/schedule.yaml
+
+stages:
+  - deps
+  - release
+  - build
+  - post-build
+
+cache:
+  - key:
+      files:
+        - yarn.lock
+      prefix: nodejs
+    paths:
+      - node_modules/
+    policy: pull
+
+variables:
+  CI_JOB_REPO: 233704588990.dkr.ecr.us-west-2.amazonaws.com/thingspro-cloud-ci/ci-job-image
+
+deps:nodejs:
+  stage: deps
+  image: "${CI_JOB_REPO}:node-14"
+  script:
+    - yarn
+  cache:
+    - key:
+        files:
+          - yarn.lock
+        prefix: nodejs
+      paths:
+        - node_modules/
+      policy: pull-push
+  rules:
+    - !reference [.rules-all-pipeline-source-dev]
+    - !reference [.rules-all-pipeline-source-prod]
+
+release:
+  stage: release
+  image: ${CI_JOB_REPO}:node-14
+  variables:
+    GITLAB_USER: ci-release-token
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    - echo -e "machine gitlab.com\nlogin ${GITLAB_USER}\npassword ${GITLAB_TOKEN}" > ~/.netrc
+    - git remote set-url origin "https://${GITLAB_USER}@gitlab.com/$CI_PROJECT_PATH.git"
+    - mkdir -p ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
+    - git branch -D temp || true; git checkout -b temp
+    - git branch -D $CI_COMMIT_BRANCH || true;
+    - git fetch -p; git checkout $CI_COMMIT_BRANCH; git pull
+    - git config --global user.email "thingspro-cloud-dev@moxa.com"
+    - git config --global user.name "CI Robot"
+    - git config push.default current
+    - yarn release-it --npm.skipChecks --config ./build/.release-it.yaml -VV
+  rules:
+    - !reference [.rules-deploy-prod]
+
+build:docker-image:
+  stage: build
+  services:
+    - name: "${CI_JOB_REPO}:docker-20.10-dind"
+      alias: docker-server
+  image: "${CI_JOB_REPO}:docker-20.10"
+  script:
+    - aws sts get-caller-identity
+    - echo $AWS_ACCESS_KEY_ID
+    - aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin ${LAMBDA_REPO} || true
+    - docker build --cache-from ${LAMBDA_REPO}:${ENV}-latest -t $LAMBDA_IMAGE -f build/package/docker/Dockerfile src
+    - docker tag $LAMBDA_IMAGE ${LAMBDA_REPO}:${ENV}-latest
+    - docker push ${LAMBDA_REPO}:${ENV}-latest
+    - docker push $LAMBDA_IMAGE
+  rules:
+    - !reference [.rules-deploy-dev]
+    - !reference [.rules-deploy-prod]
+
+post-build:trigger:
+  stage: post-build
+  variables:
+    UPSTREAM_MERGE_REQUEST_TARGET_BRANCH_NAME: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    UPSTREAM_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+  trigger:
+    project: moxa/ibg/software/platform/cloud/public/examples/nodejs-express-webapp-example/deployments/pulumi-aws-tspulumi-aws-lambda-webapp
+    branch: $CI_COMMIT_BRANCH
+  rules:
+    - !reference [.rules-all-pipeline-source-dev]
+    - !reference [.rules-all-pipeline-source-prod]
